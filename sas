@@ -5,24 +5,24 @@ font_file="/home/jason/Videos/bskk/FanwoodText-Regular.ttf"
 udalost="Nedělní shromáždění"
 
 if [ $# -lt 8 ]; then
-    echo usage: $0 videofile start-time end-time title preacher text date udalost [video filters]
-    echo example: $0 'bskk-recording.mp4 00:00:19 00:47:13 "Otec smrti, Otec života" "Marcus Denny" "Římanům 5,12–14" "25.6.2023" "Nedělní shromáždění" "eq=saturation=1.7"'
+    echo usage: "$0" videofile start-time end-time title preacher text date udalost [video filters]
+    echo example: "$0" 'bskk-recording.mp4 00:00:19 00:47:13 "Otec smrti, Otec života" "Marcus Denny" "Římanům 5,12–14" "25.6.2023" "Nedělní shromáždění" "eq=saturation=1.7"'
     exit 1
 fi
 
-video=$1
-start=$2
-end=$3
+video="$1"
+start="$2"
+end="$3"
 title="$4"
 preacher="$5"
 text="$6"
 date="$7"
 udalost="$8"
-videofilters=$9
+videofilters="$9"
 
 if [ -n "$videofilters" ];then videofilters="${videofilters},";fi
-fps=$(ffprobe -v 0 -of csv=p=0 -select_streams v:0 -show_entries stream=r_frame_rate ${video})
-resolution=$(ffprobe -v 0 -of csv=s=x:p=0 -select_streams v:0 -show_entries stream=width,height ${video})
+fps=$(ffprobe -v 0 -of csv=p=0 -select_streams v:0 -show_entries stream=r_frame_rate "${video}")
+resolution=$(ffprobe -v 0 -of csv=s=x:p=0 -select_streams v:0 -show_entries stream=width,height "${video}")
 ### FORMAT DATE TO OUTPUT FILENAME:
 IFS='.' read -r day month year <<< "$date"
 formatted_date="${year}-$(printf %02d "$month")-$(printf %02d "$day")"
@@ -43,16 +43,16 @@ Text: $text"
 
 ############ GENERATE LOGO.PNG #################
 # Create a blank white image
-convert -define png:color-type=6 -size $resolution xc:white blank.png
+convert -define png:color-type=6 -size "$resolution" xc:white blank.png
 
 # Calculate the center position
 read width height < <(identify -format "%w %h" blank.png)
-read res_width res_height < <(identify -format "%w %h" $insert_logo)
-offset_x=$((($width - $res_width) / 2))
-offset_y=$((($height - $res_height) / 2))
+read res_width res_height < <(identify -format "%w %h" "$insert_logo")
+offset_x=$(((width - res_width) / 2))
+offset_y=$(((height - res_height) / 2))
 
 # Composite the resized image onto the blank image
-composite -gravity center $insert_logo blank.png -define png:color-type=6 logo.png
+composite -gravity center "$insert_logo" blank.png -define png:color-type=6 logo.png
 
 ############# GENERATE DESC.PNG ##################
 ### CONTAINS SERMON TITLE, PREACHER, DATE, ...
@@ -100,7 +100,7 @@ time_to_s() {
   fi
 
   # Converting time to seconds.deciseconds
-  total_seconds="$(($hours * 3600 + $minutes * 60 + $seconds))"
+  total_seconds="$((hours * 3600 + minutes * 60 + seconds))"
   converted_time="${total_seconds}.${deciseconds}"
 
   echo "$converted_time"
@@ -121,13 +121,13 @@ w3_fade=1
 w3_duration=0.5
 sermon_offset=$(echo $w3_offset + $w3_fade + w3_duration|bc)
 sermon_fade=0.8
-sermon_duration=$(echo $(time_to_s $end) - $(time_to_s $start) |bc)
-logo2_offset=$(echo $sermon_offset + $sermon_fade + $sermon_duration|bc)
+sermon_duration=$(echo "$(time_to_s $end)" - "$(time_to_s "$start")" |bc)
+logo2_offset=$(echo "$sermon_offset" + "$sermon_fade" + "$sermon_duration"|bc)
 logo2_fade=1
 logo2_duration=3
 
-start_s=$(time_to_s $start)
-end_s=$(echo $(time_to_s $end) + 1|bc)
+start_s=$(time_to_s "$start")
+end_s=$(echo "$(time_to_s $end)" + 1|bc)
 
 ### DEBUG ECHO ###
 
@@ -154,9 +154,9 @@ filter_complex="[0:v]scale=$resolution,loop=-1:1,format=rgb24,trim=start=0:end=1
 [3:v]scale=${resolution},loop=-1:1,format=rgb24,trim=start=0:end=5,settb=AVTB[logo];\
 [4:v]scale=${resolution},loop=-1:1,format=rgb24,trim=start=0:end=$(echo $logo2_fade + $logo2_duration|bc),settb=AVTB[logo2];\
 [5:v]scale=${resolution},loop=-1:1,format=rgb24,trim=start=0:end=6,settb=AVTB[desc];\
-[6:v]trim=start=$start_s:end=$(echo $end_s + 1|bc),normalize=blackpt=black:whitept=white:independence=0:smoothing=50,${videofilters}settb=AVTB,setpts=PTS-STARTPTS[sermon];\
-aevalsrc=0:d=$(echo $sermon_offset + $sermon_fade|bc),asettb=AVTB[silence];\
-[6:a]atrim=start=$(echo $start_s - 0|bc),afade=t=in:st=0:d=$sermon_fade,afade=t=out:st=$(echo $end_s - 1|bc):d=$logo2_fade,atrim=end=$end_s,asettb=AVTB,asplit=2[sermon_a][sermon_a2];\
+[6:v]trim=start=$start_s:end=$(echo "$end_s" + 1|bc),normalize=blackpt=black:whitept=white:independence=0:smoothing=50,${videofilters}settb=AVTB,setpts=PTS-STARTPTS[sermon];\
+aevalsrc=0:d=$(echo "$sermon_offset" + "$sermon_fade"|bc),asettb=AVTB[silence];\
+[6:a]atrim=start=$(echo "$start_s" - 0|bc),afade=t=in:st=0:d=$sermon_fade,afade=t=out:st=$(echo "$end_s" - 1|bc):d=$logo2_fade,atrim=end=$end_s,asettb=AVTB,asplit=2[sermon_a][sermon_a2];\
 [silence][sermon_a]acrossfade=d=$sermon_fade[audio];\
 [w1][logo]xfade=transition=fade:duration=$logo_fade:offset=$logo_offset[wl];\
 [wl][w2]xfade=transition=fade:duration=$w2_duration:offset=$w2_offset[white3];\
