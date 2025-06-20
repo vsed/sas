@@ -1,7 +1,7 @@
 #!/bin/bash
 
-insert_logo="/home/jason/Videos/bskk/YT_Title_Logo.png"
-font_file="/home/jason/Videos/bskk/FanwoodText-Regular.ttf"
+insert_logo="$HOME/Videos/bskk/YT_Title_Logo.png"
+font_file="$HOME/Videos/bskk/FanwoodText-Regular.ttf"
 udalost="Nedělní shromáždění"
 
 if [ $# -lt 8 ]; then
