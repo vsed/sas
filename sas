@@ -23,6 +23,8 @@ videofilters="$9"
 if [ -n "$videofilters" ];then videofilters="${videofilters},";fi
 fps=$(ffprobe -v 0 -of csv=p=0 -select_streams v:0 -show_entries stream=r_frame_rate "${video}")
 resolution=$(ffprobe -v 0 -of csv=s=x:p=0 -select_streams v:0 -show_entries stream=width,height "${video}")
+audio_rate="$(ffprobe -v 0 -select_streams a:0 -show_entries stream=sample_rate -of default=noprint_wrappers=1:nokey=1 ${video})"
+
 ### FORMAT DATE TO OUTPUT FILENAME:
 IFS='.' read -r day month year <<< "$date"
 formatted_date="${year}-$(printf %02d "$month")-$(printf %02d "$day")"
@@ -125,6 +127,7 @@ sermon_duration=$(echo "$(time_to_s $end)" - "$(time_to_s "$start")" |bc)
 logo2_offset=$(echo "$sermon_offset" + "$sermon_fade" + "$sermon_duration"|bc)
 logo2_fade=1
 logo2_duration=3
+end_offset="$(echo $logo2_offset + $logo2_fade + $logo2_duration|bc)"
 
 start_s=$(time_to_s "$start")
 end_s=$(echo "$(time_to_s $end)" + 1|bc)
@@ -145,27 +148,49 @@ if [ "${video##*.}" = "braw" ];then
 command="braw-decode $video|pv -qL 130M|ffmpeg -y -vaapi_device /dev/dri/renderD128 -r $fps -i white.png -r $fps -i white.png -r $fps -i white.png -r $fps -i logo.png -r $fps -i logo.png -r $fps -i desc.png -f rawvideo -pixel_format rgba -s $resolution -thread_queue_size 1024 -r $fps -i pipe:0 -i $video -filter_complex \"[7:a]anull[6:a];\
 "
 else
-command="ffmpeg -y -vaapi_device /dev/dri/renderD128 -r $fps -i white.png -r $fps -i white.png -r $fps -i white.png -r $fps -i logo.png -r $fps -i logo.png -r $fps -i desc.png -i ${video} -filter_complex \""
+command="ffmpeg -y -framerate $fps -i logo.png -framerate $fps -i desc.png -i ${video} -filter_complex \""
 fi
 
-filter_complex="[0:v]scale=$resolution,loop=-1:1,format=rgb24,trim=start=0:end=12,settb=AVTB[w1];\
-[1:v]scale=$resolution,loop=-1:1,format=rgb24,trim=start=0:end=12,settb=AVTB[w2];\
-[2:v]scale=$resolution,loop=-1:1,format=rgb24,trim=start=0:end=12,settb=AVTB[w3];\
-[3:v]scale=${resolution},loop=-1:1,format=rgb24,trim=start=0:end=5,settb=AVTB[logo];\
-[4:v]scale=${resolution},loop=-1:1,format=rgb24,trim=start=0:end=$(echo $logo2_fade + $logo2_duration|bc),settb=AVTB[logo2];\
-[5:v]scale=${resolution},loop=-1:1,format=rgb24,trim=start=0:end=6,settb=AVTB[desc];\
-[6:v]trim=start=$start_s:end=$(echo "$end_s" + 1|bc),normalize=blackpt=black:whitept=white:independence=0:smoothing=50,${videofilters}settb=AVTB,setpts=PTS-STARTPTS[sermon];\
-aevalsrc=0:d=$(echo "$sermon_offset" + "$sermon_fade"|bc),asettb=AVTB[silence];\
-[6:a]atrim=start=$(echo "$start_s" - 0|bc),afade=t=in:st=0:d=$sermon_fade,afade=t=out:st=$(echo "$end_s" - 1|bc):d=$logo2_fade,atrim=end=$end_s,asettb=AVTB,asplit=2[sermon_a][sermon_a2];\
-[silence][sermon_a]acrossfade=d=$sermon_fade[audio];\
-[w1][logo]xfade=transition=fade:duration=$logo_fade:offset=$logo_offset[wl];\
-[wl][w2]xfade=transition=fade:duration=$w2_duration:offset=$w2_offset[white3];\
-[white3][desc]xfade=transition=fade:duration=$desc_fade:offset=$desc_offset[wd];\
-[wd][w3]xfade=transition=fade:duration=$w3_fade:offset=$w3_offset[white5];\
-[white5][sermon]xfade=transition=fade:duration=$sermon_fade:offset=$sermon_offset[sermon2];\
-[sermon2][logo2]xfade=transition=fade:duration=$logo2_fade:offset=$logo2_offset,format=p010,hwupload"
 
-output="-map [audio] -c:v hevc_vaapi -b:v 20M -profile:v 2 -c:a aac -b:a 384k \"$output_name\" -map [sermon_a2] -c:a libmp3lame -qscale:a 4 \"$output_name_a\""
+filter_complex="\
+color=white:$resolution:d=12,fps=$fps[white_start];
+
+[0:v]split[start_logo][end_logo];
+
+[start_logo]loop=-1:1,format=rgb24,fade=in:st=$logo_offset:d=$logo_fade:alpha=1,
+fade=out:st=$w2_offset:d=$w2_duration:alpha=1,trim=start=0:end=$desc_offset,fps=$fps[logo_start];
+
+[1:v]loop=-1:1,format=rgb24,fade=in:st=$desc_offset:d=$desc_fade:alpha=1,
+fade=out:st=$w3_offset:d=$w3_fade:alpha=1,trim=start=0:end=$(echo $sermon_offset + 1|bc ),fps=$fps[desc];
+
+[2:v]trim=start=$start_s:end=$(echo "$end_s" + 1|bc),
+normalize=blackpt=black:whitept=white:independence=0:smoothing=50,${videofilters}
+fade=in:st=$sermon_offset:d=$sermon_fade:alpha=1[sermon];
+
+[end_logo]loop=-1:1,format=rgb24,fade=in:st=$logo2_offset:d=$logo2_fade:alpha=1,
+trim=start=$logo2_offset:end=$end_offset,fps=$fps[logo_end];
+
+
+aevalsrc=0:d=$(echo "$sermon_offset" + "$sermon_fade"|bc)[silence];
+
+[2:a]atrim=start=$(echo "$start_s" - 0|bc),
+afade=t=in:st=0:d=$sermon_fade,afade=t=out:st=$(echo "$end_s" - 1|bc):d=$logo2_fade,
+atrim=end=$end_s,asplit=2[sermon_a][sermon_a2];
+
+[silence][sermon_a]acrossfade=d=$sermon_fade[audio];
+
+
+[white_start][logo_start]overlay[afterlogo];
+[afterlogo][desc]overlay[afterdesc];
+[afterdesc][sermon]overlay[aftersermon];
+[aftersermon][logo_end]overlay,
+
+
+format=p010,hwupload"
+
+
+output="-map [audio] -vaapi_device /dev/dri/renderD128 -c:v hevc_vaapi -b:v 20M -profile:v 2 -c:a aac -b:a 288k -ar $audio_rate \"$output_name\" -map [sermon_a2] -c:a libmp3lame -qscale:a 4 \"$output_name_a\""
+
 echo "$yt_desc" > "${output_name}.txt"
 
 eval "nice -n 19 $command" "$filter_complex\"" "$output"
