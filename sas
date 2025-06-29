@@ -163,7 +163,7 @@ fade=out:st=$w2_offset:d=$w2_duration:alpha=1,trim=start=0:end=$desc_offset,fps=
 [1:v]loop=-1:1,format=rgb24,fade=in:st=$desc_offset:d=$desc_fade:alpha=1,
 fade=out:st=$w3_offset:d=$w3_fade:alpha=1,trim=start=0:end=$(echo $sermon_offset + 1|bc ),fps=$fps[desc];
 
-[2:v]trim=start=$start_s:end=$(echo "$end_s" + 1|bc),
+[2:v]trim=start=$start_s:end=$(echo "$end_s" + 1|bc),setpts=PTS-STARTPTS+$sermon_offset/TB,
 normalize=blackpt=black:whitept=white:independence=0:smoothing=50,${videofilters}
 fade=in:st=$sermon_offset:d=$sermon_fade:alpha=1[sermon];
 
